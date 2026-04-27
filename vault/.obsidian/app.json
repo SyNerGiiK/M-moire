@@ -1,0 +1,15 @@
+{
+  "newFileLocation": "folder",
+  "newFileFolderPath": "00_Inbox",
+  "attachmentFolderPath": "04_Resources/Attachments",
+  "useMarkdownLinks": false,
+  "newLinkFormat": "shortest",
+  "alwaysUpdateLinks": true,
+  "showLineNumber": true,
+  "livePreview": true,
+  "defaultViewMode": "source",
+  "promptDelete": true,
+  "trashOption": "system",
+  "spellcheck": true,
+  "strictLineBreaks": false
+}

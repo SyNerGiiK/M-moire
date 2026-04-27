@@ -1,0 +1,45 @@
+# =====================================================================
+# Topics & domains the Second Brain monitors.
+# Edit this file to control what the agents fetch and summarize.
+# =====================================================================
+
+domains:
+  - name: "Artificial Intelligence"
+    subtopics:
+      - "Large Language Models"
+      - "AI Agents"
+      - "RAG Systems"
+      - "Local AI / Ollama"
+    sources:
+      arxiv: true
+      web: true
+      youtube: false
+    update_frequency: "daily"
+
+  - name: "Personal Knowledge Management"
+    subtopics:
+      - "Zettelkasten"
+      - "Second Brain"
+      - "Obsidian workflows"
+    sources:
+      arxiv: false
+      web: true
+      youtube: true
+    update_frequency: "weekly"
+
+  - name: "Software Engineering"
+    subtopics:
+      - "Python tooling"
+      - "Distributed systems"
+      - "Developer productivity"
+    sources:
+      arxiv: false
+      web: true
+      youtube: false
+    update_frequency: "weekly"
+
+settings:
+  max_notes_per_run: 50
+  min_confidence_score: 0.6
+  dedup_threshold: 0.90
+  language: "fr"

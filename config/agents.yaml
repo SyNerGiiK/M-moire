@@ -1,0 +1,38 @@
+# =====================================================================
+# Agent runtime configuration.
+# Each agent block is read by `Orchestrator` and the scheduler.
+# =====================================================================
+
+researcher:
+  enabled: true
+  max_sources_per_topic: 10
+  search_depth: "medium"        # quick | medium | deep
+  schedule_hours: 6
+
+arxiv:
+  enabled: true
+  days_back: 7
+  max_papers_per_topic: 5
+  schedule_hours: 24
+
+curator:
+  enabled: true
+  run_after_researcher: true
+  schedule_hours: 1
+
+tagger:
+  enabled: true
+  auto_link_threshold: 0.75
+  schedule_hours: 2
+
+llm:
+  provider: "ollama"             # ollama | anthropic
+  model: "mistral"
+  fallback: "claude-sonnet-4-6"
+  temperature: 0.3
+  max_tokens: 1024
+
+memory:
+  collection: "second_brain"
+  embedding_model: "all-MiniLM-L6-v2"
+  dedup_threshold: 0.90
