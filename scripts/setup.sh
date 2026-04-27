@@ -55,18 +55,9 @@ mem = VectorMemory(persist_dir=s.chroma_dir, collection_name='second_brain', emb
 print('ChromaDB ready:', mem.get_collection_stats())
 "
 
-# 6. Pull Ollama model (best-effort) -------------------------------------
-if command -v ollama >/dev/null 2>&1; then
-  MODEL="${OLLAMA_MODEL:-mistral}"
-  if ollama list 2>/dev/null | grep -q "^${MODEL}"; then
-    say "Ollama model ${MODEL} already present"
-  else
-    say "Pulling Ollama model: ${MODEL}"
-    ollama pull "${MODEL}" || warn "Could not pull model ${MODEL}; configure OLLAMA_MODEL in .env"
-  fi
-else
-  warn "Ollama not found in PATH. Install it from https://ollama.com or set SECOND_BRAIN_LLM_PROVIDER=anthropic in .env"
-fi
+# 6. Verify LM Studio connection (best-effort) ---------------------------
+say "Checking LM Studio connection (it must be started manually)"
+python scripts/check_llm.py || warn "LM Studio is not reachable yet. Start it, load a model, click 'Start Server', then run: make check-llm"
 
 # 7. Done ---------------------------------------------------------------
 cat <<EOF
@@ -74,10 +65,12 @@ cat <<EOF
 ${GREEN}Setup complete.${NC}
 
 Next steps:
-  1. Edit .env and config/topics.yaml to your taste.
-  2. Open the ./vault folder in Obsidian.
-  3. Try a single agent run:           make research
-  4. Or a full cycle:                  make run
-  5. Or start the daemon:              make daemon
+  1. Open LM Studio, load a model, click 'Start Server'.
+  2. Verify the connection:            make check-llm
+  3. Edit .env and config/topics.yaml to your taste.
+  4. Open the ./vault folder in Obsidian.
+  5. Try a single agent run:           make research
+  6. Or a full cycle:                  make run
+  7. Or start the daemon:              make daemon
 
 EOF

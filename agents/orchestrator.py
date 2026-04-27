@@ -68,13 +68,11 @@ class Orchestrator:
             embedding_model=memory_cfg.get("embedding_model", s.embed_model),
         )
         summarizer = Summarizer(
-            provider=llm_cfg.get("provider", s.llm_provider),
-            model=llm_cfg.get("model", s.ollama_model),
-            ollama_host=s.ollama_host,
-            anthropic_api_key=s.anthropic_api_key,
-            anthropic_model=llm_cfg.get("fallback", s.anthropic_model),
+            base_url=llm_cfg.get("base_url", s.lmstudio_base_url),
+            model=llm_cfg.get("model") or s.lmstudio_model,
             language=s.language,
             temperature=float(llm_cfg.get("temperature", 0.3)),
+            max_tokens=int(llm_cfg.get("max_tokens", 1024)),
         )
         bundle = _Bundle(
             settings=s,
@@ -211,8 +209,8 @@ class Orchestrator:
                 for name in ("researcher", "arxiv", "curator", "tagger")
             },
             "last_run": {k: v.as_dict() for k, v in self._last_run.items()},
-            "llm_provider": b.settings.llm_provider,
-            "llm_model": b.settings.ollama_model,
+            "llm_base_url": b.settings.lmstudio_base_url,
+            "llm_model": b.settings.lmstudio_model or "(auto)",
         }
 
     # ----------------------------------------------------------- pretty print
@@ -226,7 +224,7 @@ class Orchestrator:
         table.add_row("Memory dir", status["chroma_dir"])
         table.add_row("Notes", str(status["vault_stats"]["total"]))
         table.add_row("Memory entries", str(status["memory_stats"]["count"]))
-        table.add_row("LLM", f"{status['llm_provider']} ({status['llm_model']})")
+        table.add_row("LLM", f"LM Studio @ {status['llm_base_url']} (model: {status['llm_model']})")
         for agent, enabled in status["agents_enabled"].items():
             table.add_row(f"agent:{agent}", "enabled" if enabled else "disabled")
         self.console.print(table)

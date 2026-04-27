@@ -73,8 +73,8 @@ def test_note_writer_move_note(note_writer):
 def test_summarizer_heuristic_summary_when_no_llm(monkeypatch):
     from skills.summarizer import Summarizer
 
-    s = Summarizer(provider="ollama", anthropic_api_key=None)
-    monkeypatch.setattr(s, "_check_ollama", lambda: False)
+    s = Summarizer()
+    monkeypatch.setattr(s, "_check_lmstudio", lambda: False)
     text = "First sentence. Second sentence. Third sentence. Fourth sentence."
     out = s.summarize(text)
     assert "First sentence" in out
@@ -83,11 +83,37 @@ def test_summarizer_heuristic_summary_when_no_llm(monkeypatch):
 def test_summarizer_heuristic_tags(monkeypatch):
     from skills.summarizer import Summarizer
 
-    s = Summarizer(provider="ollama", anthropic_api_key=None)
-    monkeypatch.setattr(s, "_check_ollama", lambda: False)
+    s = Summarizer()
+    monkeypatch.setattr(s, "_check_lmstudio", lambda: False)
     tags = s.generate_tags("transformers attention mechanism transformer model attention")
     assert all(isinstance(t, str) for t in tags)
     assert tags  # heuristic should produce something
+
+
+def test_summarizer_lmstudio_path_uses_http(monkeypatch):
+    """The dispatcher must call _lmstudio_generate when the server is reachable."""
+    from skills.summarizer import Summarizer
+
+    s = Summarizer(base_url="http://localhost:1234/v1", model="test-model")
+    monkeypatch.setattr(s, "_check_lmstudio", lambda: True)
+    monkeypatch.setattr(s, "_lmstudio_generate", lambda prompt, system=None: "MOCKED REPLY")
+    out = s.summarize("Some text to summarize.")
+    assert out == "MOCKED REPLY"
+
+
+def test_summarizer_resolves_model_priority():
+    """Configured model wins over detected; detected wins over default."""
+    from skills.summarizer import Summarizer
+
+    s = Summarizer(base_url="http://localhost:1234/v1", model="explicit-model")
+    assert s._resolve_model() == "explicit-model"
+
+    s2 = Summarizer(base_url="http://localhost:1234/v1", model=None)
+    s2._detected_model = "auto-detected-model"
+    assert s2._resolve_model() == "auto-detected-model"
+
+    s3 = Summarizer(base_url="http://localhost:1234/v1", model=None)
+    assert s3._resolve_model() == "local-model"
 
 
 def test_summarizer_parse_json_list_handles_messy_output():

@@ -1,4 +1,4 @@
-.PHONY: help setup run daemon inbox research arxiv curate tag status stats test test-verbose api migrate-rebuild migrate-export clean
+.PHONY: help setup run daemon inbox research arxiv curate tag status stats test test-verbose api check-llm migrate-rebuild migrate-export clean
 
 PYTHON ?= python3
 VENV   ?= .venv
@@ -24,6 +24,7 @@ help:
 	@echo "  make stats            Same as status"
 	@echo "  make test             Run the unit tests"
 	@echo "  make api              Start the FastAPI control plane"
+	@echo "  make check-llm        Verify LM Studio is reachable + run a test generation"
 	@echo "  make migrate-rebuild  Rebuild ChromaDB from the vault"
 	@echo "  make migrate-export   Export memory to JSON"
 	@echo "  make clean            Remove caches (.pytest_cache, __pycache__, etc.)"
@@ -59,6 +60,9 @@ stats: status
 
 api:
 	$(PY) -m api.main
+
+check-llm:
+	$(PY) scripts/check_llm.py
 
 test:
 	$(PY) -m pytest
