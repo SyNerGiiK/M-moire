@@ -1,0 +1,68 @@
+# =====================================================================
+# Note templates registry. The vault folder `06_Templates/` contains the
+# canonical Markdown files; this file maps logical names to those files
+# and declares the YAML-frontmatter fields they expect.
+# =====================================================================
+
+templates:
+  atomic:
+    file: "Atomic_Note.md"
+    target_folder: "01_Atomic_Notes"
+    fields:
+      - id
+      - title
+      - created
+      - updated
+      - tags
+      - source
+      - confidence
+      - type
+      - agent_generated
+      - links
+
+  moc:
+    file: "MOC_Template.md"
+    target_folder: "02_MOC"
+    fields:
+      - id
+      - title
+      - created
+      - type
+      - domain
+
+  agent_log:
+    file: "Agent_Log.md"
+    target_folder: "07_Agents_Log"
+    fields:
+      - agent
+      - run_date
+      - topics_processed
+      - notes_created
+      - notes_updated
+      - sources_used
+
+  paper:
+    file: "Paper_Note.md"
+    target_folder: "04_Resources/Papers"
+    fields:
+      - id
+      - arxiv_id
+      - title
+      - authors
+      - published
+      - tags
+      - source
+      - type
+      - agent_generated
+      - links
+
+  inbox_capture:
+    file: "Inbox_Capture.md"
+    target_folder: "00_Inbox"
+    fields:
+      - id
+      - title
+      - created
+      - tags
+      - source
+      - type

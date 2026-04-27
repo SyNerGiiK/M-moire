@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project state
+memory/chroma_db/
+memory/embeddings_cache/
+*.log
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Vault user content (keep folder structure + templates only)
+vault/00_Inbox/*
+!vault/00_Inbox/.gitkeep
+vault/01_Atomic_Notes/*
+!vault/01_Atomic_Notes/.gitkeep
+vault/02_MOC/*
+!vault/02_MOC/.gitkeep
+vault/03_Projects/*
+!vault/03_Projects/.gitkeep
+vault/04_Resources/Papers/*
+!vault/04_Resources/Papers/.gitkeep
+vault/04_Resources/Attachments/*
+!vault/04_Resources/Attachments/.gitkeep
+vault/05_Archive/*
+!vault/05_Archive/.gitkeep
+vault/07_Agents_Log/*
+!vault/07_Agents_Log/.gitkeep
+vault/.obsidian/workspace*
+vault/.obsidian/cache
