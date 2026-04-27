@@ -1,13 +1,17 @@
 """LLM-powered summarization, tagging, and connection finding.
 
-The :class:`Summarizer` defaults to Ollama (local, no API key) and falls
-back to the Anthropic API when Ollama is unavailable and an API key is
-configured. All methods degrade gracefully — if no LLM is reachable the
-caller still gets a deterministic, useful (if simpler) result.
+The :class:`Summarizer` talks to a local **LM Studio** server using its
+OpenAI-compatible REST API (``POST {base_url}/chat/completions``). When
+LM Studio is unreachable, every method degrades gracefully to
+deterministic heuristics so the rest of the system stays useful.
+
+By design, no cloud provider is involved — every byte stays on your
+machine. If you want to point at another OpenAI-compatible server
+(``vLLM``, ``llama.cpp``'s ``llama-server``, ``LocalAI``, …), just
+override ``LMSTUDIO_BASE_URL``.
 """
 from __future__ import annotations
 
-import os
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -66,110 +70,102 @@ def _truncate(text: str, max_chars: int = 12_000) -> str:
 
 
 class Summarizer:
-    """LLM front-end with graceful degradation."""
+    """LLM front-end (LM Studio / OpenAI-compatible) with graceful degradation."""
 
     def __init__(
         self,
-        provider: str = "ollama",
+        base_url: str = "http://localhost:1234/v1",
         model: str | None = None,
-        ollama_host: str = "http://localhost:11434",
-        anthropic_api_key: str | None = None,
-        anthropic_model: str = "claude-sonnet-4-6",
         language: str = "en",
         temperature: float = 0.3,
+        max_tokens: int = 1024,
+        request_timeout: float = 120.0,
     ) -> None:
-        self.provider = (provider or "ollama").lower()
-        self.model = model or ("mistral" if self.provider == "ollama" else anthropic_model)
-        self.ollama_host = ollama_host
-        self.anthropic_api_key = anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.anthropic_model = anthropic_model
+        self.base_url = (base_url or "http://localhost:1234/v1").rstrip("/")
+        self.model = model or None
         self.language = language
-        self.temperature = temperature
-        self._ollama_ready: bool | None = None
-        self._anthropic_client: Any | None = None
+        self.temperature = float(temperature)
+        self.max_tokens = int(max_tokens)
+        self.request_timeout = float(request_timeout)
+        self._lmstudio_ready: bool | None = None
+        self._detected_model: str | None = None
 
-    # ----------------------------------------------------- provider helpers
+    # ----------------------------------------------------- LM Studio plumbing
 
-    def _check_ollama(self) -> bool:
-        if self._ollama_ready is not None:
-            return self._ollama_ready
+    def _check_lmstudio(self) -> bool:
+        """Health-check the LM Studio server and remember the loaded model."""
+        if self._lmstudio_ready is not None:
+            return self._lmstudio_ready
         try:
             import httpx
 
-            r = httpx.get(f"{self.ollama_host}/api/tags", timeout=2.0)
-            self._ollama_ready = r.status_code == 200
+            r = httpx.get(f"{self.base_url}/models", timeout=2.0)
+            ok = r.status_code == 200
+            if ok and self.model is None:
+                try:
+                    payload = r.json()
+                    data = payload.get("data") or []
+                    if data and isinstance(data, list):
+                        first = data[0].get("id") if isinstance(data[0], dict) else None
+                        if first:
+                            self._detected_model = str(first)
+                except Exception:
+                    pass
+            self._lmstudio_ready = ok
         except Exception:
-            self._ollama_ready = False
-        if not self._ollama_ready:
-            logger.warning("Ollama is not reachable at {}.", self.ollama_host)
-        return self._ollama_ready
+            self._lmstudio_ready = False
+        if not self._lmstudio_ready:
+            logger.warning(
+                "LM Studio is not reachable at {}. "
+                "Start it, load a model, click 'Start Server'.",
+                self.base_url,
+            )
+        return self._lmstudio_ready
 
-    def _ollama_generate(self, prompt: str, system: str | None = None) -> str:
-        import ollama
+    def _resolve_model(self) -> str:
+        return self.model or self._detected_model or "local-model"
 
-        client = ollama.Client(host=self.ollama_host)
-        messages = []
+    def _lmstudio_generate(self, prompt: str, system: str | None = None) -> str:
+        import httpx
+
+        messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        response = client.chat(
-            model=self.model,
-            messages=messages,
-            options={"temperature": self.temperature},
+
+        payload = {
+            "model": self._resolve_model(),
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": False,
+        }
+        r = httpx.post(
+            f"{self.base_url}/chat/completions",
+            json=payload,
+            timeout=self.request_timeout,
         )
-        return (response.get("message") or {}).get("content", "").strip()
-
-    def _anthropic_client_lazy(self) -> Any | None:
-        if self._anthropic_client is not None:
-            return self._anthropic_client
-        if not self.anthropic_api_key:
-            return None
-        try:
-            import anthropic
-
-            self._anthropic_client = anthropic.Anthropic(api_key=self.anthropic_api_key)
-            return self._anthropic_client
-        except Exception as exc:  # pragma: no cover
-            logger.warning("Anthropic client unavailable: {}", exc)
-            return None
-
-    def _anthropic_generate(self, prompt: str, system: str | None = None) -> str:
-        client = self._anthropic_client_lazy()
-        if client is None:
+        r.raise_for_status()
+        body = r.json()
+        choices = body.get("choices") or []
+        if not choices:
             return ""
-        message = client.messages.create(
-            model=self.anthropic_model,
-            max_tokens=1024,
-            temperature=self.temperature,
-            system=system or "You are a precise, concise knowledge curator.",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        # Concatenate text parts.
-        parts = []
-        for block in message.content or []:
-            text = getattr(block, "text", None)
-            if text:
-                parts.append(text)
-        return "\n".join(parts).strip()
+        message = choices[0].get("message") or {}
+        return (message.get("content") or "").strip()
 
     def _generate(self, prompt: str, system: str | None = None) -> LLMResponse:
-        # Primary: Ollama (if configured and reachable).
-        if self.provider == "ollama" and self._check_ollama():
+        if self._check_lmstudio():
             try:
-                text = self._ollama_generate(prompt, system=system)
+                text = self._lmstudio_generate(prompt, system=system)
                 if text:
-                    return LLMResponse(text=text, provider="ollama", model=self.model)
+                    return LLMResponse(
+                        text=text,
+                        provider="lmstudio",
+                        model=self._resolve_model(),
+                    )
             except Exception as exc:
-                logger.warning("Ollama generation failed: {}", exc)
-        # Fallback / primary: Anthropic.
-        if self.anthropic_api_key:
-            try:
-                text = self._anthropic_generate(prompt, system=system)
-                if text:
-                    return LLMResponse(text=text, provider="anthropic", model=self.anthropic_model)
-            except Exception as exc:
-                logger.warning("Anthropic generation failed: {}", exc)
-        # Last resort: empty string. Callers handle this as "no LLM available".
+                logger.warning("LM Studio generation failed: {}", exc)
+        # Fallback: caller switches to deterministic heuristics.
         return LLMResponse(text="", provider="none", model="none")
 
     # ---------------------------------------------------------------- public
@@ -187,7 +183,6 @@ class Summarizer:
         result = self._generate(prompt, system="You are a precise knowledge curator.")
         if result.text:
             return result.text
-        # Deterministic fallback: extract first 3 sentences.
         return _heuristic_summary(text, sentences=3)
 
     def extract_key_concepts(self, text: str, max_concepts: int = 8) -> list[str]:
@@ -256,12 +251,11 @@ class Summarizer:
         if picks:
             valid = {n.get("title") for n in vault_notes}
             return [p for p in picks if p in valid][:max_connections]
-        # Fallback: naive keyword overlap.
         return _heuristic_connections(note_content, vault_notes, max_connections)
 
 
 # ====================================================================
-# Deterministic heuristics — used when no LLM is reachable.
+# Deterministic heuristics — used when LM Studio is unreachable.
 # ====================================================================
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-ZÉÈÀÎÔÙ])")
@@ -312,7 +306,6 @@ def _normalize_tag(tag: str) -> str:
 def _parse_json_list(text: str) -> list[str]:
     if not text:
         return []
-    # Try strict JSON, then bracket extraction.
     import json
 
     candidate = text.strip()
@@ -325,7 +318,6 @@ def _parse_json_list(text: str) -> list[str]:
                 return [str(x).strip() for x in data if str(x).strip()]
         except json.JSONDecodeError:
             continue
-    # Fallback: line-delimited list.
     lines = [
         re.sub(r"^[\-\*\d\.\)\s]+", "", line).strip().strip('"').strip("'")
         for line in candidate.splitlines()

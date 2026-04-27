@@ -63,12 +63,9 @@ class Settings:
     embed_cache_dir: Path = field(default_factory=lambda: _resolve(_env("SECOND_BRAIN_EMBED_CACHE", "./memory/embeddings_cache")))
     config_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "config")
 
-    # LLM
-    llm_provider: str = field(default_factory=lambda: _env("SECOND_BRAIN_LLM_PROVIDER", "ollama") or "ollama")
-    ollama_host: str = field(default_factory=lambda: _env("OLLAMA_HOST", "http://localhost:11434") or "http://localhost:11434")
-    ollama_model: str = field(default_factory=lambda: _env("OLLAMA_MODEL", "mistral") or "mistral")
-    anthropic_api_key: str | None = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
-    anthropic_model: str = field(default_factory=lambda: _env("ANTHROPIC_MODEL", "claude-sonnet-4-6") or "claude-sonnet-4-6")
+    # LLM (LM Studio — OpenAI-compatible local server)
+    lmstudio_base_url: str = field(default_factory=lambda: _env("LMSTUDIO_BASE_URL", "http://localhost:1234/v1") or "http://localhost:1234/v1")
+    lmstudio_model: str | None = field(default_factory=lambda: _env("LMSTUDIO_MODEL"))
 
     # Embeddings
     embed_model: str = field(default_factory=lambda: _env("SECOND_BRAIN_EMBED_MODEL", "all-MiniLM-L6-v2") or "all-MiniLM-L6-v2")

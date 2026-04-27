@@ -9,7 +9,7 @@ domains:
       - "Large Language Models"
       - "AI Agents"
       - "RAG Systems"
-      - "Local AI / Ollama"
+      - "Local AI / LM Studio"
     sources:
       arxiv: true
       web: true

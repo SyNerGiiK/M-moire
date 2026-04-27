@@ -7,7 +7,7 @@ vault into a living, self-curating knowledge base.
 - **ChromaDB** is the semantic memory backend.
 - **Python agents** research, summarize, tag, and link notes.
 - **APScheduler** keeps everything running in the background.
-- **Ollama** (default) or **Anthropic** powers the LLM layer.
+- **LM Studio** (or any OpenAI-compatible local server) powers the LLM layer — 100% on-device, zero cloud calls.
 
 ---
 
@@ -53,14 +53,39 @@ vault into a living, self-curating knowledge base.
 # 1. clone & enter
 git clone <this-repo> && cd second-brain
 
-# 2. install + initialise everything (venv, deps, vault, chromadb, ollama model)
+# 2. install + initialise everything (venv, deps, vault, chromadb)
 make setup
 
-# 3. run a single cycle
+# 3. start LM Studio, load a model, click "Start Server"
+#    (Llama 3.1 8B Instruct, Qwen 2.5 7B, Mistral 7B Instruct...)
+
+# 4. verify the LLM connection
+make check-llm
+
+# 5. run a single cycle
 make run
 ```
 
 That's it. Open the `./vault` folder in Obsidian and watch the notes appear.
+
+### Connecting to LM Studio (detailed)
+
+```
+1. Open LM Studio.
+2. Tab "Discover" -> download an instruct model.
+   Recommended: Llama 3.1 8B Instruct, Qwen 2.5 7B, Mistral 7B Instruct.
+3. Tab "Chat" -> load the model.
+4. Tab "Local Server" (or "Developer" on recent versions) -> click "Start Server".
+   Default URL: http://localhost:1234.
+5. In your Second Brain checkout:
+     cp .env.example .env       # only the first time
+     # If LM Studio listens on a non-default URL, edit LMSTUDIO_BASE_URL.
+6. make check-llm                # prints the loaded model + a one-word reply.
+7. make run                       # full cycle.
+```
+
+`make check-llm` is the source of truth — if it succeeds, the brain will work; if
+it fails, it prints exactly which step is missing.
 
 ## Repository layout
 
@@ -134,7 +159,7 @@ researcher: { enabled: true, max_sources_per_topic: 10, schedule_hours: 6 }
 arxiv:      { enabled: true, days_back: 7, schedule_hours: 24 }
 curator:    { enabled: true, schedule_hours: 1 }
 tagger:     { enabled: true, schedule_hours: 2 }
-llm:        { provider: ollama, model: mistral, fallback: claude-sonnet-4-6 }
+llm:        { base_url: "http://localhost:1234/v1", model: null, temperature: 0.3 }
 ```
 
 ### `.env`
@@ -144,9 +169,8 @@ See `.env.example` for the full list. The most relevant variables:
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `SECOND_BRAIN_VAULT_PATH` | `./vault` | Obsidian vault location |
-| `SECOND_BRAIN_LLM_PROVIDER` | `ollama` | `ollama` or `anthropic` |
-| `OLLAMA_MODEL` | `mistral` | Ollama model name |
-| `ANTHROPIC_API_KEY` | _(empty)_ | Required only if provider=anthropic |
+| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio (or any OpenAI-compatible) endpoint |
+| `LMSTUDIO_MODEL` | _(auto-detect)_ | Pin a specific model id, or leave empty |
 | `SECOND_BRAIN_LANG` | `fr` | Preferred summary language |
 
 ## CLI
@@ -162,6 +186,7 @@ make inbox          # process inbox -> typed folders
 make status         # vault & memory stats
 make test           # pytest suite
 make api            # FastAPI on :8765
+make check-llm      # verify the LM Studio connection + tiny generation test
 ```
 
 Or invoke the Python entry points directly:
@@ -230,8 +255,10 @@ Install them via *Settings → Community plugins*.
 ## FAQ
 
 **Does this require an internet connection?**
-Only the researcher and arXiv agents need network access. With Ollama and
-local data sources you can run it fully offline.
+The summarizer, tagger and curator are 100% local via LM Studio — they never
+touch the internet. Only the researcher (DuckDuckGo) and arXiv agents need
+network access to fetch sources. If you only feed the inbox manually,
+the system runs fully offline.
 
 **Where are my notes stored?**
 In `vault/` as Markdown files with YAML frontmatter — fully owned by you,
@@ -252,9 +279,17 @@ once — it only creates missing folders and templates, never overwrites
 existing notes.
 
 **Is anything sent to a third party?**
-By default, no — Ollama runs locally. Only if you set
-`SECOND_BRAIN_LLM_PROVIDER=anthropic` (or set `ANTHROPIC_API_KEY` and let
-the fallback kick in) do summaries leave your machine.
+No. The project has no cloud LLM provider — every LLM call goes to your
+local LM Studio instance. The only outbound traffic is from the researcher
+(DuckDuckGo, fetched pages) and the arXiv agent (arxiv.org). Disable both
+in `config/topics.yaml` (`sources: { web: false, arxiv: false }`) for
+total air-gap operation.
+
+**Can I use something other than LM Studio?**
+Yes — anything that speaks the OpenAI Chat Completions API works. Point
+`LMSTUDIO_BASE_URL` at `vLLM`, `llama.cpp`'s `llama-server`, `LocalAI`,
+`text-generation-webui` (with the OpenAI extension), etc. The variable
+name is `LMSTUDIO_*` only because that's the recommended frontend.
 
 **How does deduplication work?**
 Two layers: (1) ChromaDB cosine similarity ≥ `dedup_threshold` skips
