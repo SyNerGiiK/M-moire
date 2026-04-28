@@ -25,6 +25,14 @@ tagger:
   auto_link_threshold: 0.75
   schedule_hours: 2
 
+crawler:
+  enabled: true
+  max_pages: 200
+  max_depth: 3
+  allow_subdomains: true
+  target_chars: 1200
+  overlap_chars: 150
+
 llm:
   base_url: "http://localhost:1234/v1"
   model: null                    # null = auto-detect via /v1/models

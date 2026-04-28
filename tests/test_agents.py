@@ -192,6 +192,77 @@ def test_arxiv_agent_writes_paper_note(note_writer, fake_memory, fake_summarizer
     assert "2401.12345" in papers[0].read_text(encoding="utf-8")
 
 
+# ============================================================== Crawler
+
+
+class _FakeCrawler:
+    def __init__(self, pages):
+        self._pages = pages
+
+    def crawl(self, root_url, max_pages=200, max_depth=3, allow_subdomains=True, path_prefix=None, min_words=30):
+        from skills.web_crawler import CrawledPage
+
+        return [CrawledPage(**p) for p in self._pages]
+
+
+def test_crawler_agent_ingests_chunks(note_writer, fake_memory):
+    from agents.crawler_agent import CrawlerAgent
+
+    body = "Section about routing. " * 80
+    fake = _FakeCrawler(
+        pages=[
+            {"url": "https://docs.example.com/intro", "title": "Intro", "content": body, "word_count": 240, "depth": 0},
+            {"url": "https://docs.example.com/api", "title": "API", "content": body + "\n\nMore text.", "word_count": 250, "depth": 1},
+        ]
+    )
+    agent = CrawlerAgent(
+        note_writer=note_writer,
+        memory=fake_memory,
+        crawler=fake,
+        topics_config={"settings": {"dedup_threshold": 0.99}},
+    )
+    result = agent.run(url="https://docs.example.com", max_pages=10, max_depth=2, target_chars=400, overlap_chars=50)
+    assert result.success
+    assert result.notes_created == 2
+    assert result.extra["chunks_added"] >= 2
+    chunk_metas = [e["metadata"] for e in fake_memory.entries.values()]
+    assert any(m.get("type") == "crawl" for m in chunk_metas)
+    assert any(m.get("source", "").startswith("https://docs.example.com") for m in chunk_metas)
+    crawl_dir = note_writer.vault_path / "04_Resources" / "Crawls"
+    assert crawl_dir.exists()
+    assert list(crawl_dir.glob("*.md"))
+
+
+def test_crawler_agent_skips_duplicate_chunks(note_writer, fake_memory):
+    from agents.crawler_agent import CrawlerAgent
+
+    body = "Repeated identical paragraph about feature X. " * 40
+    # Pre-seed the same content so the agent's dedup filter trips.
+    fake_memory.add(body, {"title": "seed"})
+
+    fake = _FakeCrawler(
+        pages=[{"url": "https://docs.example.com/x", "title": "X", "content": body, "word_count": 200, "depth": 0}]
+    )
+    agent = CrawlerAgent(
+        note_writer=note_writer,
+        memory=fake_memory,
+        crawler=fake,
+        topics_config={"settings": {"dedup_threshold": 0.5}},
+    )
+    result = agent.run(url="https://docs.example.com", target_chars=2000)
+    assert result.extra["chunks_added"] == 0
+    assert result.extra["chunks_skipped_duplicates"] >= 1
+
+
+def test_crawler_agent_handles_missing_url(note_writer, fake_memory):
+    from agents.crawler_agent import CrawlerAgent
+
+    agent = CrawlerAgent(note_writer=note_writer, memory=fake_memory, crawler=_FakeCrawler(pages=[]))
+    result = agent.run(url="")
+    assert not result.success
+    assert any("missing 'url'" in e for e in result.errors)
+
+
 # ============================================================== Orchestrator
 
 

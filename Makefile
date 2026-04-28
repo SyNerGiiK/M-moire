@@ -1,4 +1,4 @@
-.PHONY: help setup run daemon inbox research arxiv curate tag status stats test test-verbose api check-llm migrate-rebuild migrate-export clean
+.PHONY: help setup run daemon inbox research arxiv curate tag crawl status stats test test-verbose api check-llm migrate-rebuild migrate-export clean
 
 PYTHON ?= python3
 VENV   ?= .venv
@@ -20,6 +20,8 @@ help:
 	@echo "  make arxiv            Run the arxiv agent"
 	@echo "  make curate           Run all curator subcommands"
 	@echo "  make tag              Run the tagger agent"
+	@echo "  make crawl URL=...    Crawl a documentation site into the vector store"
+	@echo "                        Optional: MAX_PAGES=200 MAX_DEPTH=3 PATH_PREFIX=/docs TAG=nextjs"
 	@echo "  make status           Show vault & memory stats"
 	@echo "  make stats            Same as status"
 	@echo "  make test             Run the unit tests"
@@ -52,6 +54,27 @@ curate:
 
 tag:
 	$(PY) -m agents.orchestrator agent tagger
+
+CRAWL_ARGS := --url "$(URL)"
+ifneq ($(strip $(MAX_PAGES)),)
+CRAWL_ARGS += --max-pages $(MAX_PAGES)
+endif
+ifneq ($(strip $(MAX_DEPTH)),)
+CRAWL_ARGS += --max-depth $(MAX_DEPTH)
+endif
+ifneq ($(strip $(PATH_PREFIX)),)
+CRAWL_ARGS += --path-prefix "$(PATH_PREFIX)"
+endif
+ifneq ($(strip $(TAG)),)
+CRAWL_ARGS += --tag "$(TAG)"
+endif
+
+crawl:
+	@if [ -z "$(URL)" ]; then \
+		echo "usage: make crawl URL=https://nextjs.org/docs [MAX_PAGES=N] [MAX_DEPTH=N] [PATH_PREFIX=/docs] [TAG=nextjs]"; \
+		exit 2; \
+	fi
+	$(PY) -m agents.orchestrator crawl $(CRAWL_ARGS)
 
 status:
 	$(PY) -m agents.orchestrator status

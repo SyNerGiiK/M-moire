@@ -7,6 +7,7 @@ from skills.vector_memory import VectorMemory
 from skills.note_writer import NoteWriter
 from skills.summarizer import Summarizer
 from skills.web_search import WebSearch
+from skills.web_crawler import WebCrawler
 from skills.arxiv_fetcher import ArxivFetcher
 from skills.youtube_transcriber import YoutubeTranscriber
 from skills.pdf_processor import PDFProcessor
@@ -16,6 +17,7 @@ __all__ = [
     "NoteWriter",
     "Summarizer",
     "WebSearch",
+    "WebCrawler",
     "ArxivFetcher",
     "YoutubeTranscriber",
     "PDFProcessor",
