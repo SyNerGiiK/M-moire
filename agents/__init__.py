@@ -4,6 +4,7 @@ from agents.researcher_agent import ResearcherAgent
 from agents.arxiv_agent import ArxivAgent
 from agents.curator_agent import CuratorAgent
 from agents.tagger_agent import TaggerAgent
+from agents.crawler_agent import CrawlerAgent
 from agents.orchestrator import Orchestrator
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "ArxivAgent",
     "CuratorAgent",
     "TaggerAgent",
+    "CrawlerAgent",
     "Orchestrator",
 ]

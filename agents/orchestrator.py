@@ -17,6 +17,7 @@ from rich.table import Table
 
 from agents.arxiv_agent import ArxivAgent
 from agents.base import AgentResult
+from agents.crawler_agent import CrawlerAgent
 from agents.curator_agent import CuratorAgent
 from agents.researcher_agent import ResearcherAgent
 from agents.tagger_agent import TaggerAgent
@@ -25,6 +26,7 @@ from skills.arxiv_fetcher import ArxivFetcher
 from skills.note_writer import NoteWriter
 from skills.summarizer import Summarizer
 from skills.vector_memory import VectorMemory
+from skills.web_crawler import WebCrawler
 from skills.web_search import WebSearch
 
 
@@ -35,6 +37,7 @@ class _Bundle:
     memory: VectorMemory
     summarizer: Summarizer
     web_search: WebSearch
+    web_crawler: WebCrawler
     arxiv_fetcher: ArxivFetcher
     agents_config: dict[str, Any] = field(default_factory=dict)
     topics_config: dict[str, Any] = field(default_factory=dict)
@@ -80,6 +83,7 @@ class Orchestrator:
             memory=memory,
             summarizer=summarizer,
             web_search=WebSearch(),
+            web_crawler=WebCrawler(),
             arxiv_fetcher=ArxivFetcher(download_dir=s.embed_cache_dir / "arxiv"),
             agents_config=agents_config,
             topics_config=topics_config,
@@ -122,6 +126,14 @@ class Orchestrator:
                 note_writer=b.note_writer,
                 summarizer=b.summarizer,
                 config=cfg,
+            )
+        elif name == "crawler":
+            agent = CrawlerAgent(
+                note_writer=b.note_writer,
+                memory=b.memory,
+                crawler=b.web_crawler,
+                config=cfg,
+                topics_config=b.topics_config,
             )
         else:
             raise KeyError(f"Unknown agent: {name!r}")
@@ -166,6 +178,8 @@ class Orchestrator:
             if method is None:
                 raise ValueError(f"Unknown tagger subcommand: {sub!r}")
             result = method(**kwargs)
+        elif agent_name == "crawler":
+            result = agent.run(**kwargs)
         else:
             raise ValueError(f"Unknown agent {agent_name!r}")
 
@@ -206,7 +220,7 @@ class Orchestrator:
             "memory_stats": b.memory.get_collection_stats(),
             "agents_enabled": {
                 name: bool((b.agents_config.get(name) or {}).get("enabled", True))
-                for name in ("researcher", "arxiv", "curator", "tagger")
+                for name in ("researcher", "arxiv", "curator", "tagger", "crawler")
             },
             "last_run": {k: v.as_dict() for k, v in self._last_run.items()},
             "llm_base_url": b.settings.lmstudio_base_url,
@@ -268,18 +282,29 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--quiet", action="store_true")
 
     p_agent = sub.add_parser("agent", help="Run a single agent")
-    p_agent.add_argument("name", choices=["researcher", "arxiv", "curator", "tagger"])
+    p_agent.add_argument("name", choices=["researcher", "arxiv", "curator", "tagger", "crawler"])
     p_agent.add_argument(
         "--subcommand",
         default=None,
         help="Curator/tagger subcommand (e.g. process_inbox, generate_connections)",
     )
+    p_agent.add_argument("--url", default=None, help="Root URL for the crawler agent")
+    p_agent.add_argument("--max-pages", type=int, default=None, dest="max_pages")
+    p_agent.add_argument("--max-depth", type=int, default=None, dest="max_depth")
+    p_agent.add_argument("--path-prefix", default=None, dest="path_prefix")
 
     sub.add_parser("inbox", help="Process inbox only (curator.process_inbox)")
     sub.add_parser("research", help="Run researcher agent only")
     sub.add_parser("arxiv", help="Run arxiv agent only")
     sub.add_parser("curate", help="Run all curator subcommands")
     sub.add_parser("stats", help="Detailed memory + vault stats")
+
+    p_crawl = sub.add_parser("crawl", help="Crawl a documentation site into the vector store")
+    p_crawl.add_argument("--url", required=True, help="Root URL to crawl (e.g. https://nextjs.org/docs)")
+    p_crawl.add_argument("--max-pages", type=int, default=None, dest="max_pages")
+    p_crawl.add_argument("--max-depth", type=int, default=None, dest="max_depth")
+    p_crawl.add_argument("--path-prefix", default=None, dest="path_prefix")
+    p_crawl.add_argument("--tag", default=None, help="Override the tag attached to ingested chunks")
 
     return parser
 
@@ -301,6 +326,15 @@ def main(argv: list[str] | None = None) -> int:
             kwargs: dict[str, Any] = {}
             if args.subcommand:
                 kwargs["subcommand"] = args.subcommand
+            if args.name == "crawler":
+                if getattr(args, "url", None):
+                    kwargs["url"] = args.url
+                if getattr(args, "max_pages", None) is not None:
+                    kwargs["max_pages"] = args.max_pages
+                if getattr(args, "max_depth", None) is not None:
+                    kwargs["max_depth"] = args.max_depth
+                if getattr(args, "path_prefix", None):
+                    kwargs["path_prefix"] = args.path_prefix
             result = orchestrator.run_agent(args.name, **kwargs)
             orchestrator.print_results({args.name: result})
         elif cmd == "inbox":
@@ -319,6 +353,18 @@ def main(argv: list[str] | None = None) -> int:
             orchestrator.print_results(results)
         elif cmd == "stats":
             orchestrator.print_status()
+        elif cmd == "crawl":
+            kwargs = {"url": args.url}
+            if args.max_pages is not None:
+                kwargs["max_pages"] = args.max_pages
+            if args.max_depth is not None:
+                kwargs["max_depth"] = args.max_depth
+            if args.path_prefix:
+                kwargs["path_prefix"] = args.path_prefix
+            if args.tag:
+                kwargs["tag"] = args.tag
+            result = orchestrator.run_agent("crawler", **kwargs)
+            orchestrator.print_results({"crawler": result})
         else:  # pragma: no cover
             parser.print_help()
             return 1

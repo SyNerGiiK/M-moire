@@ -163,6 +163,120 @@ def test_web_search_extract_links_filters_same_host():
     assert all("example.com" not in u for u in out)
 
 
+# ============================================================== WebCrawler
+
+
+def test_web_crawler_chunk_text_short_passthrough():
+    from skills.web_crawler import chunk_text
+
+    assert chunk_text("") == []
+    assert chunk_text("short text") == ["short text"]
+
+
+def test_web_crawler_chunk_text_splits_long_input():
+    from skills.web_crawler import chunk_text
+
+    paragraphs = "\n\n".join([f"Paragraph {i} " * 30 for i in range(8)])
+    chunks = chunk_text(paragraphs, target_chars=400, overlap_chars=50)
+    assert len(chunks) >= 3
+    assert all(c.strip() for c in chunks)
+
+
+def test_web_crawler_chunk_text_hard_slices_huge_paragraph():
+    from skills.web_crawler import chunk_text
+
+    huge = "a" * 5000
+    chunks = chunk_text(huge, target_chars=1000, overlap_chars=100)
+    assert len(chunks) >= 5
+    assert all(len(c) <= 1000 for c in chunks)
+
+
+def test_web_crawler_extract_links_keeps_same_domain_only():
+    from skills.web_crawler import _extract_links, _same_domain
+
+    html = (
+        '<a href="/docs/foo">f</a>'
+        '<a href="https://nextjs.org/docs/bar">b</a>'
+        '<a href="https://other.com/x">x</a>'
+        '<a href="mailto:hi@nextjs.org">m</a>'
+        '<a href="javascript:void(0)">j</a>'
+    )
+    links = _extract_links(html, "https://nextjs.org/docs")
+    same = [u for u in links if _same_domain(u, "nextjs.org")]
+    assert "https://nextjs.org/docs/foo" in same
+    assert "https://nextjs.org/docs/bar" in same
+    assert all("other.com" not in u for u in same)
+    assert all("mailto:" not in u and "javascript:" not in u for u in links)
+
+
+def test_web_crawler_skips_assets():
+    from skills.web_crawler import _looks_like_asset
+
+    assert _looks_like_asset("https://x.com/img.png")
+    assert _looks_like_asset("https://x.com/a/b/file.pdf")
+    assert not _looks_like_asset("https://x.com/docs/intro")
+
+
+def test_web_crawler_crawl_uses_stubbed_network(monkeypatch):
+    from skills import web_crawler
+    from skills.web_crawler import WebCrawler
+
+    pages_html = {
+        "https://example.com/docs": (
+            "<html><head><title>Docs Home</title></head>"
+            "<body><a href='/docs/intro'>Intro</a><a href='/docs/api'>API</a>"
+            "<a href='https://other.com/x'>x</a>"
+            "<p>" + ("welcome to the documentation home page " * 20) + "</p>"
+            "</body></html>"
+        ),
+        "https://example.com/docs/intro": (
+            "<html><head><title>Intro</title></head>"
+            "<body><p>" + ("introduction body content here " * 20) + "</p></body></html>"
+        ),
+        "https://example.com/docs/api": (
+            "<html><head><title>API</title></head>"
+            "<body><p>" + ("api reference details here " * 20) + "</p></body></html>"
+        ),
+    }
+
+    def fake_fetch(self, url):
+        return pages_html.get(url)
+
+    def fake_extract(self, html, url):
+        # Pull <title> manually then use the visible text-ish content from html.
+        import re as _re
+        title_match = _re.search(r"<title>(.*?)</title>", html, _re.IGNORECASE | _re.DOTALL)
+        title = (title_match.group(1).strip() if title_match else "").strip()
+        body = _re.sub(r"<[^>]+>", " ", html)
+        body = _re.sub(r"\s+", " ", body).strip()
+        return title, body
+
+    monkeypatch.setattr(WebCrawler, "_download", fake_fetch)
+    monkeypatch.setattr(WebCrawler, "_extract", fake_extract)
+
+    crawler = WebCrawler(request_delay=0.0)
+    pages = crawler.crawl(
+        "https://example.com/docs",
+        max_pages=10,
+        max_depth=2,
+        allow_subdomains=False,
+        path_prefix="/docs",
+    )
+    urls = {p.url for p in pages}
+    assert "https://example.com/docs" in urls
+    assert "https://example.com/docs/intro" in urls
+    assert "https://example.com/docs/api" in urls
+    assert all(p.url.startswith("https://example.com/") for p in pages)
+
+
+def test_web_crawler_returns_empty_on_network_failure(monkeypatch):
+    from skills.web_crawler import WebCrawler
+
+    monkeypatch.setattr(WebCrawler, "_download", lambda self, url: None)
+    crawler = WebCrawler(request_delay=0.0)
+    assert crawler.crawl("https://example.com/", max_pages=5, max_depth=2) == []
+
+
 # ============================================================== Youtube
 
 
